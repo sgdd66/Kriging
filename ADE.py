@@ -56,7 +56,7 @@ class Ind(object):
 
 
 
-class DE(object):
+class ADE(object):
     def __init__(self,min,max,population,CR,environment,isMin=True):
         """min,max是一维数组，用以确定搜索空间的范围
         population是种群数量
@@ -198,7 +198,7 @@ if __name__=='__main__':
         return 3*(1-x)**2*np.exp(-(x**2)-(y+1)**2)-10*(x/5-x**3-y**5)*np.exp(-x**2-y**2)-1/3*np.exp(-(x+1)**2-y**2)
     min=np.array([-3,-3])
     max=np.array([3,3])
-    test=DE(min,max,100,0.5,func,True)
+    test=ADE(min,max,100,0.5,func,True)
     ind=test.evolution(maxGen=100)
 
     mlab.points3d(ind.x[0],ind.x[1],ind.y,scale_factor=0.1)

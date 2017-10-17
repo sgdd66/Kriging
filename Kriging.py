@@ -5,7 +5,7 @@
 
 
 import numpy as np
-import KrigingPackage.DE as DE
+import KrigingPackage.ADE as ADE
 import matplotlib.pyplot as plt
 import KrigingPackage.DOE as DOE
 import mayavi.mlab as mlab
@@ -14,10 +14,11 @@ os.environ['QT_API']='pyside'
 
 
 class Kriging(object):
-    def __init__(self,dataPoints,value,min=None,max=None):
+    def __init__(self,dataPoints,value,min=None,max=None,maxGen=1):
         """points是插值点，n行d列，d是点的维度，n是点的数目
         min和max是拟合空间的范围，用以对数据进行归一化。如果min和max都等于none，说明点数据已经是归一化之后的数据了"""
-        num=dataPoints.shpae[0]
+        num=dataPoints.shape[0]
+        d = dataPoints.shape[1]
         self.ys = value.reshape((num, 1))
 
         if(min is None and max is None):
@@ -27,12 +28,9 @@ class Kriging(object):
             self.min=min
             self.max=max
 
-        points = self.points
-        num = points.shape[0]
-        d = points.shape[1]
-        self.p=np.zeros(d)
+        self.p=np.zeros(d)+2
         self.theta=np.zeros(d)
-        self.optimize()
+        self.optimize(maxGen)
         # points = self.points
         # num = points.shape[0]
         # d = points.shape[1]
@@ -72,15 +70,17 @@ class Kriging(object):
         num = points.shape[0]
         d = points.shape[1]
         for i in range(d):
-            self.p[i]=X[i]
-            self.theta[i]=X[i+d]
+            self.theta[i]=X[i]
 
         self.R = np.zeros((num, num))
         for i in range(0, num):
             for j in range(0, num):
                 self.R[i, j] = self.correlation(points[i, :], points[j, :])
-        self.R_1 = np.linalg.inv(self.R)
-
+        try:
+            self.R_1 = np.linalg.inv(self.R)
+        except np.linalg.linalg.LinAlgError as error:
+            lhL=-10000
+            return lhL
         F = np.zeros((num, 1)) + 1
         R_1 = self.R_1
         ys = self.ys
@@ -95,16 +95,27 @@ class Kriging(object):
         sigma2 = np.dot(factor.T, R_1)
         sigma2 = np.dot(sigma2, factor) / num
         self.sigma2 = sigma2
+        det_R=np.abs(np.linalg.det(self.R))
+        if(det_R==0 or sigma2==0):
+            return -1000
 
-        return -num/2*np.log(sigma2**2)-0.5*np.log(np.linalg.det(self.R))
+        lgL=-num/2*np.log(sigma2**2)-0.5*np.log(det_R)
+        if(lgL>0):
+            return -1000
+        return lgL
 
 
-    def optimize(self):
+
+
+
+    def optimize(self,maxGen):
         # 设置计算相关系数中所使用的theta和p值
-        min=[0,0,0,0]
-        max=[3,3,100,100]
-        test = DE(min, max, 100, 0.5, 0.5, func,False)
-        ind = test.evolution(generation=100)
+        d=self.points.shape[1]
+        min=np.zeros(d)
+        max=np.zeros(d)+100
+        test = ADE.ADE(min, max, 100, 0.5, self.log_likelihood,False)
+        ind = test.evolution(maxGen=maxGen)
+        self.log_likelihood(ind.x)
 
 
 
@@ -160,27 +171,24 @@ class Kriging(object):
 
 
 if __name__=="__main__":
-    def func(X):
-        x = X[0]
-        y = X[1]
-        return 3 * (1 - x) ** 2 * np.exp(-(x ** 2) - (y + 1) ** 2) - 10 * (x / 5 - x ** 3 - y ** 5) * np.exp(
-            -x ** 2 - y ** 2) - 1 / 3 * np.exp(-(x + 1) ** 2 - y ** 2)
-    min = np.array([-3, -3])
-    max = np.array([3, 3])
+    # leak函数
+    # def func(X):
+    #     x = X[0]
+    #     y = X[1]
+    #     return 3 * (1 - x) ** 2 * np.exp(-(x ** 2) - (y + 1) ** 2) - 10 * (x / 5 - x ** 3 - y ** 5) * np.exp(
+    #         -x ** 2 - y ** 2) - 1 / 3 * np.exp(-(x + 1) ** 2 - y ** 2)
+    # min = np.array([-3, -3])
+    # max = np.array([3, 3])
 
-    # def Branin(x):
-    #     pi=3.1415926
-    #     y=x[1]-(5*x[0]**2)/(4*pi**2)+5*x[0]/pi-6
-    #     y=y**2
-    #     y+=10*(1-1/(8*pi))*np.cos(x[0])+10
-    #     return y
-    # min = np.array([-5, 0])
-    # max = np.array([10, 15])
-
-
-
-
-
+    # Brain函数
+    def func(x):
+        pi=3.1415926
+        y=x[1]-(5*x[0]**2)/(4*pi**2)+5*x[0]/pi-6
+        y=y**2
+        y+=10*(1-1/(8*pi))*np.cos(x[0])+10
+        return y
+    min = np.array([-5, 0])
+    max = np.array([10, 15])
 
     x, y = np.mgrid[min[0]:max[0]:100j, min[1]:max[1]:100j]
     s = np.zeros_like(x)
@@ -193,7 +201,7 @@ if __name__=="__main__":
     mlab.outline()
     mlab.axes(xlabel='x', ylabel='y', zlabel='z')
 
-    sampleNum=50
+    sampleNum=21
 
     lh=DOE.LatinHypercube(2,sampleNum,min,max)
     sample=lh.samples
